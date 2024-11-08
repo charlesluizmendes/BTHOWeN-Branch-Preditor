@@ -1,0 +1,11 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+
+# Outros exemplos comuns
+*.log
+*.env
+.DS_Store

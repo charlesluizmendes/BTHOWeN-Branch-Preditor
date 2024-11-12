@@ -1,7 +1,7 @@
 import numpy as np
 import sys
 from typing import List, Tuple
-import mmh3  # MurmurHash3 for better hash functions
+import mmh3
 
 class BloomFilter:
     """

@@ -15,6 +15,15 @@ def calculate_number_of_rams(entry_size, address_size):
         number_of_rams += 1
     return number_of_rams
 
+def save_accuracy(num_branches, num_branches_predicted, filename):
+    accuracy = (num_branches_predicted / num_branches) * 100
+    path = f"{filename}-accuracy.csv"
+    try:
+        with open(path, "a") as f:
+            f.write(f"{accuracy:.4f} WISARD\n")
+    except IOError:
+        print("Não foi possível abrir o arquivo para salvar a acurácia.")
+
 class Bleaching:
     @staticmethod
     def make(allvotes):
@@ -196,6 +205,9 @@ def main(argv):
     print(f"Accuracy: {final_accuracy:.6f}")
     print(f"\n------ Size of ntuple (address_size): {address_size} -----")
     print(f"\n------ Size of each input: {input_size} -----\n")
+
+    # Salvar a acurácia em um arquivo CSV
+    save_accuracy(num_branches, num_branches_predicted, argv[1])
 
     stream.close()
 

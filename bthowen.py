@@ -17,6 +17,16 @@ def update_global_history(ghr, outcome):
     ghr.popleft()  # Remove o elemento mais antigo do GHR
     ghr.append(outcome)  # Adiciona o novo resultado de predição ao GHR
 
+# Função para salvar a acurácia em um arquivo CSV
+def save_accuracy(num_branches, num_branches_predicted, filename):
+    accuracy = (num_branches_predicted / num_branches) * 100
+    path = f"{filename}-accuracy.csv"
+    try:
+        with open(path, "a") as f:
+            f.write(f"{accuracy:.4f} BTHOWeN\n")
+    except IOError:
+        print("Não foi possível abrir o arquivo para salvar a acurácia.")
+
 # Simulação do preditor BTHOWeN
 class BTHOWeN:
     def __init__(self, address_size, input_size):
@@ -88,14 +98,17 @@ def train_predictor(file_name, address_size, params, interval=10000):
                 print(f"Branch number: {num_branches}")
                 print(f"----- Partial Accuracy: {partial_accuracy:.2f}%\n")
 
-    # Resultados finais formatados
+    # Resultados finais formatados e salvar a acurácia em CSV
     final_accuracy = (num_branches_predicted / num_branches) * 100
     print(" ----- Results ------")
-    print(f"Predicted  branches: {num_branches_predicted}")
+    print(f"Predicted branches: {num_branches_predicted}")
     print(f"Not predicted branches: {num_branches - num_branches_predicted}")
     print(f"Accuracy: {final_accuracy:.6f}")
     print(f"\n------ Size of ntuple (address_size): {address_size} -----")
     print(f"\n------ Size of each input: {predictor.input_size} -----\n")
+
+    # Salvar a acurácia final no arquivo CSV
+    save_accuracy(num_branches, num_branches_predicted, file_name)
 
 # Parâmetros e execução do modelo
 if __name__ == "__main__":

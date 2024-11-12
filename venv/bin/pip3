@@ -1,4 +1,4 @@
-#!/Users/charlesmendes/Projetos/Branch-Predictor/venv/bin/python3.12
+#!/home/ubuntu/Projects/Branch-Predictor/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys

@@ -1,122 +1,202 @@
 import numpy as np
 import sys
-from collections import deque
+from typing import List, Tuple
+import mmh3  # MurmurHash3 for better hash functions
 
-# Funções auxiliares para manipulação de bits e XOR
-def pc_binary(n, bit_size=32):
-    return [(n >> i) & 1 for i in range(bit_size - 1, -1, -1)]
-
-def xor_pc_ghr(pc_bits, ghr):
-    return [pc_bit ^ ghr_bit for pc_bit, ghr_bit in zip(pc_bits, ghr)]
-
-# Inicialização do histórico global (GHR) e local (LHR)
-def initialize_local_history(lhr_size, lhr_bits_pc):
-    return [[0] * lhr_size for _ in range(1 << lhr_bits_pc)]
-
-def update_global_history(ghr, outcome):
-    ghr.popleft()  # Remove o elemento mais antigo do GHR
-    ghr.append(outcome)  # Adiciona o novo resultado de predição ao GHR
-
-# Função para salvar a acurácia em um arquivo CSV
-def save_accuracy(num_branches, num_branches_predicted, filename):
-    accuracy = (num_branches_predicted / num_branches) * 100
-    path = f"{filename}-accuracy.csv"
-    try:
-        with open(path, "a") as f:
-            f.write(f"{accuracy:.4f} BTHOWeN\n")
-    except IOError:
-        print("Não foi possível abrir o arquivo para salvar a acurácia.")
-
-# Simulação do preditor BTHOWeN
-class BTHOWeN:
-    def __init__(self, address_size, input_size):
-        self.history_table = {}
-        self.address_size = address_size
-        self.input_size = input_size
-
-    def classify(self, input_data):
-        # Converte o input_data para uma chave hashável para busca na tabela de histórico
-        key = tuple(input_data)
-        return self.history_table.get(key, 0)  # Retorna 0 se não encontrado
-
-    def train(self, input_data, outcome):
-        # Armazena o resultado correto para o input_data
-        key = tuple(input_data)
-        self.history_table[key] = outcome
-
-# Função para processamento e "treino"
-def train_predictor(file_name, address_size, params, interval=10000):
-    num_branches, num_branches_predicted = 0, 0
-    ghr = deque([0] * 24, maxlen=24)  # Histórico global com deque para manipulação eficiente
-    lhr = initialize_local_history(24, 12)  # Inicialização do histórico local
-
-    # Calcula o input_size ajustado para maior correspondência com o WiSARD
-    input_size = (params[0] * 24) + (params[1] * 24) + (params[2] * 24) + \
-                 (params[3] * 24) + (params[4] * 16) + (params[5] * 9) + \
-                 (params[6] * 7) + (params[7] * 5)
-
-    predictor = BTHOWeN(address_size=address_size, input_size=input_size)
-
-    with open(file_name, "r") as stream:
-        for line in stream:
-            pc, outcome = map(int, line.strip().split())
-            
-            num_branches += 1
-            pc_bits = pc_binary(pc, 32)
-            pc_bits_lower_24 = pc_bits[-24:]
-            xor_pc_ghr24 = xor_pc_ghr(pc_bits_lower_24, list(ghr))
-
-            # Preparação dos dados de entrada (train_data)
-            train_data = (pc_bits_lower_24 * params[0] +
-                          list(ghr) * params[1] +
-                          xor_pc_ghr24 * params[2])
-
-            # Adiciona mais informações ao train_data para maior correspondência com o input_size
-            train_data += (pc_bits_lower_24[:16] * params[3] +  # Substituindo para alcançar input_size
-                           xor_pc_ghr24[:9] * params[4] +  # Segmento de 9 bits
-                           xor_pc_ghr24[:7] * params[5] +  # Segmento de 7 bits
-                           xor_pc_ghr24[:5] * params[6] +  # Segmento de 5 bits
-                           xor_pc_ghr24[:8] * params[7])   # Segmento de 8 bits
-
-            # Limita o train_data ao tamanho do input_size desejado
-            train_data = train_data[:input_size]
-
-            # Realiza a predição
-            predicted = predictor.classify(train_data)
-            if predicted == outcome:
-                num_branches_predicted += 1
-
-            # Treina o preditor armazenando o resultado correto para esta entrada
-            predictor.train(train_data, outcome)
-
-            # Atualização dos registros de históricos
-            update_global_history(ghr, outcome)
-
-            # Exibe precisão parcial a cada intervalo especificado
-            if num_branches % interval == 0:
-                partial_accuracy = (num_branches_predicted / num_branches) * 100
-                print(f"Branch number: {num_branches}")
-                print(f"----- Partial Accuracy: {partial_accuracy:.2f}%\n")
-
-    # Resultados finais formatados e salvar a acurácia em CSV
-    final_accuracy = (num_branches_predicted / num_branches) * 100
-    print(" ----- Results ------")
-    print(f"Predicted branches: {num_branches_predicted}")
-    print(f"Not predicted branches: {num_branches - num_branches_predicted}")
-    print(f"Accuracy: {final_accuracy:.6f}")
-    print(f"\n------ Size of ntuple (address_size): {address_size} -----")
-    print(f"\n------ Size of each input: {predictor.input_size} -----\n")
-
-    # Salvar a acurácia final no arquivo CSV
-    save_accuracy(num_branches, num_branches_predicted, file_name)
-
-# Parâmetros e execução do modelo
-if __name__ == "__main__":
-    if len(sys.argv) != 12:
-        print("Please, write the file/path_to_file correctly!")
-        sys.exit(0)
+class BloomFilter:
+    """
+    Bloom Filter implementation for bTHOWeN
+    Uses multiple hash functions for indexing
+    """
+    def __init__(self, size: int, num_hashes: int = 3):
+        self.size = size
+        self.num_hashes = num_hashes
+        self.bits = np.zeros(size, dtype=np.int8)
+        self.weights = np.zeros(size, dtype=np.int8)
     
-    file_name = sys.argv[1]
+    def get_hash_indices(self, data: np.ndarray, seed: int) -> List[int]:
+        """
+        Generate multiple hash indices using MurmurHash3
+        As specified in bTHOWeN paper, uses ternary hash functions
+        """
+        indices = []
+        data_bytes = data.tobytes()
+        
+        for i in range(self.num_hashes):
+            # Use different seeds for each hash function
+            h1 = mmh3.hash(data_bytes, seed + i) % self.size
+            h2 = mmh3.hash(data_bytes, seed + i + self.num_hashes) % self.size
+            h3 = mmh3.hash(data_bytes, seed + i + 2 * self.num_hashes) % self.size
+            
+            # Combine hashes using ternary operation as per bTHOWeN
+            index = (h1 ^ h2 ^ h3) % self.size
+            indices.append(index)
+            
+        return indices
+    
+    def get_weight(self, data: np.ndarray, seed: int) -> int:
+        """Get the weight for given input data"""
+        total_weight = 0
+        indices = self.get_hash_indices(data, seed)
+        
+        for idx in indices:
+            if self.bits[idx]:  # Only count weight if bit is set
+                total_weight += self.weights[idx]
+                
+        return total_weight
+    
+    def update(self, data: np.ndarray, seed: int, error: int):
+        """Update weights using one-shot learning"""
+        indices = self.get_hash_indices(data, seed)
+        
+        for idx in indices:
+            self.bits[idx] = 1  # Set bloom filter bit
+            # Update weight with clipping
+            self.weights[idx] = np.clip(self.weights[idx] + error, -128, 127)
+
+class BTHOWeN:
+    """
+    Complete bTHOWeN implementation with all original paper features
+    """
+    def __init__(self, address_size: int, input_size: int):
+        # Bloom filter parameters from paper
+        self.num_filters = 3
+        self.filter_size = 2**14  # Size recommended in paper
+        
+        # Initialize Bloom filters
+        self.filters = [BloomFilter(self.filter_size) for _ in range(self.num_filters)]
+        
+        # Feature parameters
+        self.ghr_size = 24
+        self.path_size = 16
+        self.target_size = 16
+        
+        # History registers
+        self.ghr = np.zeros(self.ghr_size, dtype=np.uint8)
+        self.path_history = np.zeros(self.path_size, dtype=np.uint8)
+        self.last_targets = np.zeros(self.target_size, dtype=np.uint32)
+        
+        # Statistics
+        self.num_branches = 0
+        self.num_predicted = 0
+        
+    def extract_features(self, pc: int) -> np.ndarray:
+        """
+        Extract features as specified in bTHOWeN paper:
+        - Branch PC
+        - Global history
+        - Path history
+        - Target history
+        - XOR combinations
+        """
+        # Extract PC bits
+        pc_bits = np.array([int(b) for b in format(pc & ((1 << 24) - 1), '024b')], 
+                          dtype=np.uint8)
+        
+        # XOR features between PC and histories
+        pc_ghr_xor = np.bitwise_xor(pc_bits[:self.ghr_size], self.ghr)
+        pc_path_xor = np.bitwise_xor(pc_bits[:self.path_size], self.path_history)
+        
+        # Combine all features
+        features = np.concatenate([
+            pc_bits,  # Branch address
+            self.ghr,  # Global history
+            self.path_history,  # Path history
+            pc_ghr_xor,  # PC xor GHR
+            pc_path_xor,  # PC xor Path
+        ])
+        
+        return features
+    
+    def predict_and_train(self, pc: int, target: int, outcome: int) -> bool:
+        """
+        Make prediction and perform one-shot training if needed
+        Returns True if prediction was correct
+        """
+        features = self.extract_features(pc)
+        
+        # Get votes from all Bloom filters
+        total_vote = 0
+        for i, bloom_filter in enumerate(self.filters):
+            total_vote += bloom_filter.get_weight(features, i)
+        
+        # Make prediction
+        prediction = total_vote >= 0
+        correct = (prediction == bool(outcome))
+        
+        # One-shot learning: update only on mispredictions
+        if not correct:
+            error = 1 if outcome else -1
+            for i, bloom_filter in enumerate(self.filters):
+                bloom_filter.update(features, i, error)
+        
+        # Update histories
+        self._update_histories(pc, target, outcome)
+        
+        return correct
+    
+    def _update_histories(self, pc: int, target: int, outcome: int):
+        """Update all history registers"""
+        # Update GHR
+        self.ghr = np.roll(self.ghr, 1)
+        self.ghr[0] = outcome
+        
+        # Update path history
+        self.path_history = np.roll(self.path_history, 1)
+        self.path_history[0] = pc & 1
+        
+        # Update target history
+        self.last_targets = np.roll(self.last_targets, 1)
+        self.last_targets[0] = target
+
+def main():
+    if len(sys.argv) != 12:
+        print("Please provide correct number of arguments")
+        sys.exit(1)
+        
+    input_file = sys.argv[1]
     address_size = int(sys.argv[2])
-    params = list(map(int, sys.argv[3:11]))  # Parâmetros para o preditor
-    train_predictor(file_name, address_size, params)
+    
+    # Calculate input size from parameters
+    input_size = sum(int(arg) for arg in sys.argv[3:11]) * 24
+    
+    predictor = BTHOWeN(address_size, input_size)
+    interval = 10000
+    
+    try:
+        with open(input_file, 'r') as f:
+            num_branches = 0
+            num_predicted = 0
+            
+            for line in f:
+                pc, outcome = map(int, line.strip().split())
+                target = pc + 4  # Default next instruction
+                
+                num_branches += 1
+                if predictor.predict_and_train(pc, target, outcome):
+                    num_predicted += 1
+                    
+                if num_branches % interval == 0:
+                    accuracy = (num_predicted / num_branches) * 100
+                    print(f"branch number: {num_branches}")
+                    print(f"----- Partial Accuracy: {accuracy:.4f}\n")
+            
+            # Final results
+            accuracy = (num_predicted / num_branches) * 100
+            print("\n----- Results ------")
+            print(f"Predicted branches: {num_predicted}")
+            print(f"Not predicted branches: {num_branches - num_predicted}")
+            print(f"Accuracy: {accuracy:.4f}")
+            print(f"\n------ Size of ntuple (address_size): {address_size}")
+            print(f"------ Size of each input: {input_size}")
+            
+            # Save accuracy
+            with open(f"{input_file}-accuracy.csv", "a") as f:
+                f.write(f"{accuracy:.4f}\n")
+                
+    except FileNotFoundError:
+        print("Can't open file")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

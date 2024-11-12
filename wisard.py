@@ -1,221 +1,228 @@
+import sys
+from typing import List, Tuple, Dict
 import random
-import time
-from collections import defaultdict, deque
+from dataclasses import dataclass
+import numpy as np
 
-class ExceptionWiSARD(Exception):
-    def __init__(self, msg):
-        self.msg = msg
-    def __str__(self):
-        return self.msg
+class RAM:
+    def __init__(self, indexes: List[int] = None):
+        self.addresses = indexes if indexes else []
+        self.positions: Dict[int, int] = {}
+        self.index = 0
+        
+        if len(self.addresses) > 64:
+            raise Exception("The base power to addressSize passed the limit of 2^64!")
+    
+    def get_vote(self, input_data: List[int]) -> int:
+        self.index = self.get_index(input_data)
+        return self.positions.get(self.index, 0)
+    
+    def train(self, input_data: List[int]):
+        self.index = self.get_index(input_data)
+        self.positions[self.index] = self.positions.get(self.index, 0) + 1
+    
+    def get_index(self, input_data: List[int]) -> int:
+        index = 0
+        p = 1
+        for addr in self.addresses:
+            bin_val = input_data[addr]
+            index += bin_val * p
+            p *= 2
+        return index
 
-def calculate_number_of_rams(entry_size, address_size):
-    number_of_rams = entry_size // address_size
-    remain = entry_size % address_size
-    if remain > 0:
-        number_of_rams += 1
-    return number_of_rams
-
-def save_accuracy(num_branches, num_branches_predicted, filename):
-    accuracy = (num_branches_predicted / num_branches) * 100
-    path = f"{filename}-accuracy.csv"
-    try:
-        with open(path, "a") as f:
-            f.write(f"{accuracy:.4f} WISARD\n")
-    except IOError:
-        print("Não foi possível abrir o arquivo para salvar a acurácia.")
+class Discriminator:
+    def __init__(self, address_size: int, entry_size: int):
+        self.entry_size = entry_size
+        if address_size < 2 or entry_size < 2 or entry_size < address_size:
+            raise Exception("Invalid address or entry size!")
+        
+        self.set_ram_shuffle(address_size)
+    
+    def classify(self, input_data: List[int]) -> List[int]:
+        return [ram.get_vote(input_data) for ram in self.rams]
+    
+    def train(self, input_data: List[int]):
+        for ram in self.rams:
+            ram.train(input_data)
+    
+    def set_ram_shuffle(self, address_size: int):
+        num_rams = self.entry_size // address_size
+        remain = self.entry_size % address_size
+        indexes_size = self.entry_size
+        
+        if remain > 0:
+            num_rams += 1
+            indexes_size += address_size - remain
+        
+        self.rams = []
+        indexes = list(range(self.entry_size))
+        random.shuffle(indexes)
+        
+        for i in range(num_rams):
+            sub_indexes = indexes[i*address_size:(i+1)*address_size]
+            self.rams.append(RAM(sub_indexes))
 
 class Bleaching:
     @staticmethod
-    def make(allvotes):
+    def make(all_votes: List[List[int]]) -> List[int]:
         labels = [0, 0]
         bleaching = 1
         biggest = 0
         ambiguity = False
+        
         while True:
             for i in range(2):
-                labels[i] = 0
-                for vote in allvotes[i]:
-                    if vote >= bleaching:
-                        labels[i] += 1
+                labels[i] = sum(1 for vote in all_votes[i] if vote >= bleaching)
+            
             bleaching += 1
             biggest = max(labels)
             ambiguity = labels.count(biggest) > 1
+            
             if not ambiguity or biggest <= 1:
                 break
+                
         return labels
 
-class RAM:
-    def __init__(self, indexes=None):
-        self.addresses = indexes or []
-        self.positions = defaultdict(int)
-        if indexes is not None:
-            self.check_limit_address_size(len(indexes))
-
-    def get_vote(self, input_data):
-        index = self.get_index(input_data)
-        return self.positions.get(index, 0)
-
-    def train(self, input_data):
-        index = self.get_index(input_data)
-        self.positions[index] += 1
-
-    def get_index(self, input_data):
-        index = 0
-        p = 1
-        for address in self.addresses:
-            index += input_data[address] * p
-            p *= 2
-        return index
-
-    def check_limit_address_size(self, address_size):
-        if address_size > 64:
-            raise ExceptionWiSARD("The base power to addressSize passed the limit of 2^64!")
-
-class Discriminator:
-    def __init__(self, address_size=0, entry_size=0):
-        self.entry_size = entry_size
-        self.rams = []
-        if entry_size > 0:
-            self.set_ram_shuffle(address_size)
-
-    def classify(self, input_data):
-        votes = [ram.get_vote(input_data) for ram in self.rams]
-        return votes
-
-    def train(self, input_data):
-        for ram in self.rams:
-            ram.train(input_data)
-
-    def set_ram_shuffle(self, address_size):
-        self.check_address_size(self.entry_size, address_size)
-        number_of_rams = calculate_number_of_rams(self.entry_size, address_size)
-        indexes = list(range(self.entry_size))
-        random.shuffle(indexes)
-        self.rams = [RAM(indexes[i * address_size:(i + 1) * address_size]) for i in range(number_of_rams)]
-
-    def check_address_size(self, entry_size, address_size):
-        if address_size < 2 or entry_size < 2 or entry_size < address_size:
-            raise ExceptionWiSARD("Invalid address or entry size!")
-
 class Wisard:
-    def __init__(self, address_size, input_size):
+    def __init__(self, address_size: int, input_size: int):
         self.address_size = address_size
-        self.discriminators = [Discriminator(address_size, input_size), Discriminator(address_size, input_size)]
-
-    def train(self, input_data, label):
+        self.discriminators = []
+        self.make_discriminator(0, input_size)
+        self.make_discriminator(1, input_size)
+    
+    def train(self, input_data: List[int], label: int):
         self.discriminators[label].train(input_data)
-
-    def classify(self, input_data):
+    
+    def classify(self, input_data: List[int]) -> int:
         candidates = self.classify2(input_data)
         return 0 if candidates[0] >= candidates[1] else 1
+    
+    def classify2(self, input_data: List[int]) -> List[int]:
+        all_votes = [
+            self.discriminators[0].classify(input_data),
+            self.discriminators[1].classify(input_data)
+        ]
+        return Bleaching.make(all_votes)
+    
+    def make_discriminator(self, label: int, entry_size: int):
+        while len(self.discriminators) <= label:
+            self.discriminators.append(None)
+        self.discriminators[label] = Discriminator(self.address_size, entry_size)
 
-    def classify2(self, input_data):
-        allvotes = [self.discriminators[0].classify(input_data), self.discriminators[1].classify(input_data)]
-        return Bleaching.make(allvotes)
+def pc_to_binary(n: int, bits: int = 32) -> List[int]:
+    return [(n >> i) & 1 for i in range(bits-1, -1, -1)]
 
-# Funções de manipulação de dados e predição de branches
-def read_branch(pc, outcome, stream):
-    line = stream.readline()
-    if not line:
-        return False
-    data = line.strip().split()
-    pc[0] = int(data[0])
-    outcome[0] = int(data[1])
-    return True
+def update_history(history: List[int], outcome: int, max_size: int):
+    history.append(outcome)
+    if len(history) > max_size:
+        history.pop(0)
 
-def pc_binary(n):
-    return [int(bit) for bit in bin(n)[2:].zfill(32)]
-
-def pc_binary_lower(pc_bits, n):
-    return pc_bits[-n:]
-
-def xor_pc_ghr(pc_bits, ghr, n):
-    return [pc_bits[i] ^ ghr[i] for i in range(n)]
-
-# Função principal para rodar o programa
-def main(argv):
-    if len(argv) != 12:
-        print("Please, write the file/path_to_file correctly!")
-        exit(0)
-
-    stream = open(argv[1], "r")
-    if not stream:
-        print("Can't open file")
-        return
-
-    address_size = int(argv[2])
-    params = list(map(int, argv[3:11]))
-
-    pc = [0]
-    outcome = [0]
+def main():
+    if len(sys.argv) != 12:
+        print("Please provide correct number of arguments!")
+        sys.exit(1)
+    
+    input_file = sys.argv[1]
+    parameters = [int(float(arg)) for arg in sys.argv[2:]]
+    
+    ntuple_size = parameters[0]
+    pc_times = parameters[1]
+    ghr_times = parameters[2]
+    pc_xor_ghr_times = parameters[3]
+    lhr_times = parameters[4:9]
+    gas = parameters[9]
+    
+    # Initialize histories
+    ghr = [0] * 24
+    lhr_configs = [
+        (24, 12), (16, 10), (9, 9), (7, 7), (5, 5)
+    ]
+    
+    lhrs = []
+    for length, bits in lhr_configs:
+        lhr_size = 1 << bits
+        lhrs.append([[0] * length for _ in range(lhr_size)])
+    
+    ga = [0] * (8 * 8)  # 8 branches x 8 bits
+    
+    input_size = (pc_times * 24 + ghr_times * 24 + 
+                 pc_xor_ghr_times * 24 + 
+                 sum(times * length for times, (length, _) in zip(lhr_times, lhr_configs)) +
+                 gas * len(ga))
+    
+    predictor = Wisard(ntuple_size, input_size)
+    print(f"Input size: {input_size}")
+    
     num_branches = 0
-    num_branches_predicted = 0
-    ghr = deque([0] * 24, maxlen=24)  # Histórico global com deque
-    input_size = sum([params[i] * (24 if i < 3 else (16, 9, 7, 5, 8)[i - 3]) for i in range(8)])
-
-    w = Wisard(address_size, input_size)
-    train_data = []
-
-    while read_branch(pc, outcome, stream):
-        num_branches += 1
-
-        pc_bits = pc_binary(pc[0])
-        pc_bits_lower_24 = pc_binary_lower(pc_bits, 24)
-        xor_pc_ghr24 = xor_pc_ghr(pc_bits_lower_24, list(ghr), 24)
-
-        # Montagem dos dados de entrada para treinamento
-        train_data = (pc_bits_lower_24 * params[0] +
-                      list(ghr) * params[1] +
-                      xor_pc_ghr24 * params[2])
-
-        # Adiciona dados adicionais para completar o input_size
-        train_data += (pc_bits_lower_24[:16] * params[3] +
-                       xor_pc_ghr24[:9] * params[4] +
-                       xor_pc_ghr24[:7] * params[5] +
-                       xor_pc_ghr24[:5] * params[6] +
-                       xor_pc_ghr24[:8] * params[7])
-
-        # Limita o train_data ao tamanho do input_size
-        train_data = train_data[:input_size]
-
-        # Realiza a predição
-        predicted = w.classify(train_data)
-        if predicted == outcome[0]:
-            num_branches_predicted += 1
-
-        # Treina o preditor
-        w.train(train_data, outcome[0])
-
-        # Atualiza o histórico global
-        ghr.append(outcome[0])
-
-        # Exibe precisão parcial a cada 10.000 branches
-        if num_branches % 10000 == 0:
-            partial_accuracy = (num_branches_predicted / num_branches) * 100
-            print(f"Branch number: {num_branches}")
-            print(f"----- Partial Accuracy: {partial_accuracy:.2f}%\n")
-
-        train_data.clear()
-
-    # Resultados finais
-    final_accuracy = (num_branches_predicted / num_branches) * 100
-    print(" ----- Results ------")
-    print(f"Predicted branches: {num_branches_predicted}")
-    print(f"Not predicted branches: {num_branches - num_branches_predicted}")
-    print(f"Accuracy: {final_accuracy:.6f}")
-    print(f"\n------ Size of ntuple (address_size): {address_size} -----")
-    print(f"\n------ Size of each input: {input_size} -----\n")
-
-    # Salvar a acurácia em um arquivo CSV
-    save_accuracy(num_branches, num_branches_predicted, argv[1])
-
-    stream.close()
+    num_predicted = 0
+    interval = 10000
+    
+    with open(input_file, 'r') as f:
+        for line in f:
+            pc, outcome = map(int, line.strip().split())
+            num_branches += 1
+            
+            # Prepare input data
+            pc_bits = pc_to_binary(pc)
+            pc_bits_lower = pc_bits[-24:]
+            xor_pc_ghr = [p ^ g for p, g in zip(pc_bits_lower, ghr)]
+            
+            # Build training data
+            train_data = []
+            
+            # Add PC bits
+            train_data.extend(pc_bits_lower * pc_times)
+            
+            # Add global histories
+            train_data.extend(ghr * ghr_times)
+            
+            # Add XORed data
+            train_data.extend(xor_pc_ghr * pc_xor_ghr_times)
+            
+            # Add local histories
+            for lhr, (length, bits), times in zip(lhrs, lhr_configs, lhr_times):
+                index = (pc & ((1 << bits) - 1))
+                train_data.extend(lhr[index] * times)
+            
+            # Add global addresses
+            train_data.extend(ga * gas)
+            
+            # Predict and train
+            result = predictor.classify(train_data)
+            if result == outcome:
+                num_predicted += 1
+            
+            if num_branches % interval == 0:
+                accuracy = (num_predicted / num_branches) * 100
+                print(f"Branch number: {num_branches}")
+                print(f"Partial Accuracy: {accuracy:.2f}%\n")
+            
+            # Train the predictor
+            predictor.train(train_data, outcome)
+            
+            # Update histories
+            update_history(ghr, outcome, 24)
+            
+            for lhr, (_, bits) in zip(lhrs, lhr_configs):
+                index = (pc & ((1 << bits) - 1))
+                update_history(lhr[index], outcome, lhr_configs[0][0])
+            
+            # Update global addresses
+            ga.extend(pc_bits[-8:])
+            ga = ga[8:]
+    
+    # Final results
+    accuracy = (num_predicted / num_branches) * 100
+    print("\n----- Results ------")
+    print(f"Predicted branches: {num_predicted}")
+    print(f"Not predicted branches: {num_branches - num_predicted}")
+    print(f"Accuracy: {accuracy:.2f}%")
+    print(f"\n------ Size of ntuple (address_size): {ntuple_size} -----")
+    print(f"\n------ Size of each input: {input_size} -----")
+    
+    # Save results
+    with open(f"{input_file}-accuracy.csv", 'a') as f:
+        f.write(f"{accuracy:.4f}\n")
 
 if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) != 12:
-        print("Please, write the file/path_to_file correctly!")
-        sys.exit(0)
-
-    main(sys.argv)
+    main()

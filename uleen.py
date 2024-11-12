@@ -158,7 +158,7 @@ def main():
             print(f"------ Size of each input: {input_size}")
             
             with open(f"{input_file}-accuracy.csv", "a") as f:
-                f.write(f"{accuracy:.4f}\n")
+                f.write(f"{accuracy:.4f} ULEEN\n")
                 
     except FileNotFoundError:
         print("Can't open file")

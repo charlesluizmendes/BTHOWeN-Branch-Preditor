@@ -262,7 +262,7 @@ def main():
     
     # Save accuracy to file
     with open(f"{input_file}-accuracy.csv", 'a') as f:
-        f.write(f"{final_accuracy:.4f}\n")
+        f.write(f"{final_accuracy:.4f} WISARD\n")
 
 if __name__ == "__main__":
     main()

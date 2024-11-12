@@ -192,7 +192,7 @@ def main():
             
             # Save accuracy
             with open(f"{input_file}-accuracy.csv", "a") as f:
-                f.write(f"{accuracy:.4f}\n")
+                f.write(f"{accuracy:.4f} BTHOWeN\n")
                 
     except FileNotFoundError:
         print("Can't open file")

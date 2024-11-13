@@ -1,3 +1,11 @@
+# Ambiente
+
+Para instalar todas as dependências do projeto realize o comando abaixo:
+
+```
+$ pip install -r requirements.txt
+```
+
 # Execução
 
 Para execução dos Preditores de Desvio, basta executar o padrão abaixo:

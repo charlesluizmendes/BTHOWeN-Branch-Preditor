@@ -27,15 +27,10 @@ class BloomFilter:
         data_bytes = data.tobytes()
         
         for i in range(self.num_hashes):
-            # Usa diferentes sementes para cada função hash
-            h1 = mmh3.hash(data_bytes, seed + i) % self.size
-            h2 = mmh3.hash(data_bytes, seed + i + self.num_hashes) % self.size
-            h3 = mmh3.hash(data_bytes, seed + i + 2 * self.num_hashes) % self.size
-            
-            # Combina hashes usando operação ternária conforme BTHOWeN
-            index = (h1 ^ h2 ^ h3) % self.size
+            # Usa uma única função de hash com diferentes sementes
+            index = mmh3.hash(data_bytes, seed + i) % self.size
             indices.append(index)
-            
+    
         return indices
     
     # Obtém o peso para os dados de entrada fornecidos

@@ -1,7 +1,11 @@
-import numpy as np
 import sys
-from typing import List, Tuple
+import os
+import csv
 import mmh3
+import numpy as np
+import matplotlib.pyplot as plt
+from typing import List
+from datetime import datetime
 
 # Implementação do Filtro de Bloom para o BTHOWeN
 class BloomFilter:
@@ -170,6 +174,10 @@ def main():
     # Inicializa o preditor
     predictor = BTHOWeN(address_size, input_size)
     interval = 10000
+
+    # Inicializa listas para armazenar dados para o gráfico
+    branches_processed = []
+    accuracies = []
     
     try:
         # Processa arquivo de entrada
@@ -190,25 +198,59 @@ def main():
                 # Imprime resultados parciais
                 if num_branches % interval == 0:
                     accuracy = (num_predicted / num_branches) * 100
+
+                    # Adiciona acuracias ao vetor
+                    branches_processed.append(num_branches) 
+                    accuracies.append(accuracy)
+
                     print(f"branch number: {num_branches}")
                     print(f"----- Partial Accuracy: {accuracy:.4f}\n")
             
+            # Remove o caminho do diretório e a extensão, deixando apenas o nome do arquivo
+            input_file_base = os.path.splitext(os.path.basename(input_file))[0]
+            # Cria o diretório caso ele não exista
+            output_dir = f"Results_accuracy/{input_file_base}"
+            os.makedirs(output_dir, exist_ok=True)
+            # Obtém a data e hora atual para nomear o arquivo
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+            # Cria o gráfico de acurácias
+            plt.figure(figsize=(10, 6))
+            plt.plot(branches_processed, accuracies, marker='o')
+            plt.title("Accuracy Over Time")
+            plt.xlabel("Number of Branches Processed")
+            plt.ylabel("Accuracy (%)")
+            plt.grid()
+            plt.savefig(f"{output_dir}/{timestamp}-BTHOWeN-accuracy.png")
+            plt.show()
+
             # Resultados finais
-            accuracy = (num_predicted / num_branches) * 100
+            final_accuracy = (num_predicted / num_branches) * 100            
+
+            # Salva a acurácia em arquivo
+            os.makedirs("Results_accuracy", exist_ok=True)
+
+            with open(f"{output_dir}/{timestamp}-BTHOWeN-accuracy.csv", "w", newline='') as e:  # Abre arquivo de resultados em modo append
+                writer = csv.writer(e)
+                writer.writerow(["Number of Branches Processed", "Accuracy (%)"])  # Cabeçalho do arquivo
+                writer.writerows(zip(branches_processed, accuracies))  # Dados do gráfico
+
+            with open(f"Results_accuracy/{input_file_base}-accuracy.csv", 'a') as f:
+                f.write(f"{final_accuracy:.4f} BTHOWeN\n")
+
             print("\n----- Results ------")
             print(f"Predicted branches: {num_predicted}")
             print(f"Not predicted branches: {num_branches - num_predicted}")
-            print(f"Accuracy: {accuracy:.4f}")
+            print(f"Accuracy: {final_accuracy:.4f}")
             print(f"\n------ Size of ntuple (address_size): {address_size}")
             print(f"------ Size of each input: {input_size}")
-            
-            # Salva acurácia em arquivo
-            with open(f"{input_file}-accuracy.csv", "a") as f:
-                f.write(f"{accuracy:.4f} BTHOWeN\n")
                 
-    except FileNotFoundError:
-        print("Can't open file")
-        sys.exit(1)
+    except FileNotFoundError:  # Trata erro de arquivo não encontrado
+        print("Can't open file")  # Mostra mensagem de erro
+        sys.exit(1)  # Encerra programa com código de erro
+    except Exception as e:  # Trata outros erros possíveis
+        print(f"Error: {str(e)}")  # Mostra mensagem de erro detalhada
+        sys.exit(1)  # Encerra programa com código de erro
 
 # Ponto de entrada do programa
 if __name__ == "__main__":

@@ -1,6 +1,10 @@
-import numpy as np
-from typing import List
+import os
 import sys
+import csv
+import numpy as np
+import matplotlib.pyplot as plt
+from typing import List
+from datetime import datetime
 
 # Classe LUT (Look-Up Table) que implementa uma tabela de pesquisa usada para o processamento de dados.
 class LUT:
@@ -223,6 +227,10 @@ def main():
     
     num_branches = num_correct = 0
     interval = 10000
+
+    # Inicializa listas para armazenar dados para o gráfico
+    branches_processed = []
+    accuracies = []
     
     # Abre o arquivo de entrada para leitura dos desvios.
     with open(input_file, 'r') as f:
@@ -237,21 +245,52 @@ def main():
             # Exibe a precisão parcial a cada 'interval' desvios.
             if num_branches % interval == 0:
                 accuracy = (num_correct / num_branches) * 100
+
+                # Adiciona acuracias ao vetor
+                branches_processed.append(num_branches) 
+                accuracies.append(accuracy)
+
                 print(f"Branch number: {num_branches}")
                 print(f"----- Partial Accuracy: {accuracy:.2f}\n")
+
+    # Remove o caminho do diretório e a extensão, deixando apenas o nome do arquivo
+    input_file_base = os.path.splitext(os.path.basename(input_file))[0]
+    # Cria o diretório caso ele não exista
+    output_dir = f"Results_accuracy/{input_file_base}"
+    os.makedirs(output_dir, exist_ok=True)
+    # Obtém a data e hora atual para nomear o arquivo
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    # Cria o gráfico de acurácias
+    plt.figure(figsize=(10, 6))
+    plt.plot(branches_processed, accuracies, marker='o')
+    plt.title("Accuracy Over Time")
+    plt.xlabel("Number of Branches Processed")
+    plt.ylabel("Accuracy (%)")
+    plt.grid()
+    plt.savefig(f"{output_dir}/{timestamp}-DWN-accuracy.png")
+    plt.show()
     
     # Exibe os resultados finais após processar todos os desvios.
-    final_accuracy = (num_correct / num_branches) * 100
+    final_accuracy = (num_correct / num_branches) * 100    
+
+    # Salva a acurácia em arquivo
+    os.makedirs("Results_accuracy", exist_ok=True)
+
+    with open(f"{output_dir}/{timestamp}-DWN-accuracy.csv", "w", newline='') as e:  # Abre arquivo de resultados em modo append
+        writer = csv.writer(e)
+        writer.writerow(["Number of Branches Processed", "Accuracy (%)"])  # Cabeçalho do arquivo
+        writer.writerows(zip(branches_processed, accuracies))  # Dados do gráfico
+
+    with open(f"Results_accuracy/{input_file_base}-accuracy.csv", 'a') as f:
+        f.write(f"{final_accuracy:.4f} DWN\n")
+
     print("\n----- Results ------")
     print(f"Predicted branches: {num_correct}")
     print(f"Not predicted branches: {num_branches - num_correct}")
     print(f"Accuracy: {final_accuracy:.2f}%")
     print(f"\n------ Size of ntuple (address_size): {parameters[0]} -----")
     print(f"\n------ Size of each input: {predictor.input_size} -----")
-    
-    # Escreve a precisão final em um arquivo CSV.
-    with open(f"{input_file}-accuracy.csv", 'a') as f:
-        f.write(f"{final_accuracy:.4f} DWN\n")
 
 # Executa a função principal quando o script é chamado diretamente.
 if __name__ == "__main__":

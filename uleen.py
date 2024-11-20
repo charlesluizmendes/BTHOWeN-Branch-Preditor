@@ -1,7 +1,11 @@
-import numpy as np 
+import os
 import sys  
-from typing import List, Tuple 
+import csv
+import numpy as np 
+import matplotlib.pyplot as plt
+from typing import List 
 from collections import defaultdict  
+from datetime import datetime
 
 class BloomFilter:
     def __init__(self, size: int, num_hash: int):
@@ -215,6 +219,10 @@ def main():
         
         predictor = ULEEN(address_size, feature_config)  # Cria preditor
         interval = 10000  # Intervalo de relatório de progresso
+
+        # Inicializa listas para armazenar dados para o gráfico
+        branches_processed = []
+        accuracies = []
         
         with open(input_file, 'r') as f:  # Abre arquivo de trace
             num_branches = 0  # Total de branches processados
@@ -229,22 +237,53 @@ def main():
                 
                 if num_branches % interval == 0:  # Se no intervalo de relatório
                     accuracy = (num_predicted / num_branches) * 100  # Calcula precisão parcial
+
+                    # Adiciona acuracias ao vetor
+                    branches_processed.append(num_branches) 
+                    accuracies.append(accuracy)
+
                     print(f"branch number: {num_branches}")  # Mostra número atual de branches
                     print(f"----- Partial Accuracy: {accuracy:.4f}\n")  # Mostra precisão parcial formatada
             
+            # Remove o caminho do diretório e a extensão, deixando apenas o nome do arquivo
+            input_file_base = os.path.splitext(os.path.basename(input_file))[0]
+            # Cria o diretório caso ele não exista
+            output_dir = f"Results_accuracy/{input_file_base}"
+            os.makedirs(output_dir, exist_ok=True)
+            # Obtém a data e hora atual para nomear o arquivo
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+            # Cria o gráfico de acurácias
+            plt.figure(figsize=(10, 6))
+            plt.plot(branches_processed, accuracies, marker='o')
+            plt.title("Accuracy Over Time")
+            plt.xlabel("Number of Branches Processed")
+            plt.ylabel("Accuracy (%)")
+            plt.grid()
+            plt.savefig(f"{output_dir}/{timestamp}-ULEEN-accuracy.png")
+            plt.show()            
+
             # Calcula e imprime resultados finais
-            accuracy = (num_predicted / num_branches) * 100  # Calcula precisão final
+            final_accuracy = (num_predicted / num_branches) * 100  # Calcula precisão final
+
+            # Salva a acurácia em arquivo
+            os.makedirs("Results_accuracy", exist_ok=True)
+
+            with open(f"{output_dir}/{timestamp}-ULEEN-accuracy.csv", "w", newline='') as e:  # Abre arquivo de resultados em modo append
+                writer = csv.writer(e)
+                writer.writerow(["Number of Branches Processed", "Accuracy (%)"])  # Cabeçalho do arquivo
+                writer.writerows(zip(branches_processed, accuracies))  # Dados do gráfico
+
+            with open(f"Results_accuracy/{input_file_base}-accuracy.csv", "a") as f:  # Abre arquivo de resultados em modo append
+                f.write(f"{final_accuracy:.4f} ULEEN\n")  # Escreve precisão final com identificador do modelo
+            
             print("\n----- Results ------")  # Imprime cabeçalho dos resultados
             print(f"Predicted branches: {num_predicted}")  # Mostra número total de predições corretas
             print(f"Not predicted branches: {num_branches - num_predicted}")  # Mostra número de predições incorretas
-            print(f"Accuracy: {accuracy:.4f}")  # Mostra precisão final formatada
+            print(f"Accuracy: {final_accuracy:.4f}")  # Mostra precisão final formatada
             print(f"\n------ Size of ntuple (address_size): {address_size}")  # Mostra tamanho do endereço usado
             print(f"------ Size of each input: {predictor.input_size}")  # Mostra tamanho total da entrada
-            
-            # Salva resultados em arquivo
-            with open(f"{input_file}-accuracy.csv", "a") as f:  # Abre arquivo de resultados em modo append
-                f.write(f"{accuracy:.4f} ULEEN\n")  # Escreve precisão final com identificador do modelo
-    
+
     except FileNotFoundError:  # Trata erro de arquivo não encontrado
         print("Can't open file")  # Mostra mensagem de erro
         sys.exit(1)  # Encerra programa com código de erro

@@ -1,8 +1,10 @@
-import numpy as np
-from typing import List, Tuple, Dict
-from collections import defaultdict
 import sys
-import time
+import os
+import csv
+import numpy as np
+import matplotlib.pyplot as plt
+from typing import List, Dict
+from datetime import datetime
 
 # Classe para implementar a memória RAM do WiSARD
 class RAM:
@@ -266,47 +268,91 @@ def main():
         print("Please provide correct arguments!")
         sys.exit(1)
     
-    # Obtém arquivo de entrada e parâmetros
-    input_file = sys.argv[1]
-    parameters = list(map(int, sys.argv[2:]))
+    try:
+
+        # Obtém arquivo de entrada e parâmetros
+        input_file = sys.argv[1]
+        parameters = list(map(int, sys.argv[2:]))
+
+        # Inicializa o preditor
+        predictor = BranchPredictor(parameters[0], parameters)
+        print(f"Input size: {predictor.input_size}")
+
+        # Inicializa contadores
+        num_branches = 0
+        num_correct = 0
+        interval = 10000
+
+        # Inicializa listas para armazenar dados para o gráfico
+        branches_processed = []
+        accuracies = []
+
+        # Processa o arquivo de entrada
+        with open(input_file, 'r') as f:
+            for line in f:
+                pc, outcome = map(int, line.strip().split())
+                num_branches += 1
+
+                # Realiza predição e treinamento
+                if predictor.predict_and_train(pc, outcome):
+                    num_correct += 1
+
+                # Imprime resultados parciais
+                if num_branches % interval == 0:
+                    accuracy = (num_correct / num_branches) * 100
+
+                    # Adiciona acuracias ao vetor
+                    branches_processed.append(num_branches) 
+                    accuracies.append(accuracy) 
+
+                    print(f"Branch number: {num_branches}")
+                    print(f"----- Partial Accuracy: {accuracy:.2f}\n")
     
-    # Inicializa o preditor
-    predictor = BranchPredictor(parameters[0], parameters)
-    print(f"Input size: {predictor.input_size}")
+        # Remove o caminho do diretório e a extensão, deixando apenas o nome do arquivo
+        input_file_base = os.path.splitext(os.path.basename(input_file))[0]
+        # Cria o diretório caso ele não exista
+        output_dir = f"Results_accuracy/{input_file_base}"
+        os.makedirs(output_dir, exist_ok=True)
+        # Obtém a data e hora atual para nomear o arquivo
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+        # Cria o gráfico de acurácias
+        plt.figure(figsize=(10, 6))
+        plt.plot(branches_processed, accuracies, marker='o')
+        plt.title("Accuracy Over Time")
+        plt.xlabel("Number of Branches Processed")
+        plt.ylabel("Accuracy (%)")
+        plt.grid()
+        plt.savefig(f"{output_dir}/{timestamp}-WISARD-accuracy.png")
+        plt.show() 
+
+        # Calcula e imprime resultados finais
+        final_accuracy = (num_correct / num_branches) * 100
+
+        # Salva a acurácia em arquivo
+        os.makedirs("Results_accuracy", exist_ok=True)
+
+        with open(f"{output_dir}/{timestamp}-WISARD-accuracy.csv", "w", newline='') as e:  # Abre arquivo de resultados em modo append
+            writer = csv.writer(e)
+            writer.writerow(["Number of Branches Processed", "Accuracy (%)"])  # Cabeçalho do arquivo
+            writer.writerows(zip(branches_processed, accuracies))  # Dados do gráfico
+
+        with open(f"Results_accuracy/{input_file_base}-accuracy.csv", 'a') as f:
+            f.write(f"{final_accuracy:.4f} WISARD\n")
     
-    # Inicializa contadores
-    num_branches = 0
-    num_correct = 0
-    interval = 10000
-    
-    # Processa o arquivo de entrada
-    with open(input_file, 'r') as f:
-        for line in f:
-            pc, outcome = map(int, line.strip().split())
-            num_branches += 1
-            
-            # Realiza predição e treinamento
-            if predictor.predict_and_train(pc, outcome):
-                num_correct += 1
-            
-            # Imprime resultados parciais
-            if num_branches % interval == 0:
-                accuracy = (num_correct / num_branches) * 100
-                print(f"Branch number: {num_branches}")
-                print(f"----- Partial Accuracy: {accuracy:.2f}\n")
-    
-    # Calcula e imprime resultados finais
-    final_accuracy = (num_correct / num_branches) * 100
-    print("\n----- Results ------")
-    print(f"Predicted branches: {num_correct}")
-    print(f"Not predicted branches: {num_branches - num_correct}")
-    print(f"Accuracy: {final_accuracy:.2f}%")
-    print(f"\n------ Size of ntuple (address_size): {parameters[0]} -----")
-    print(f"\n------ Size of each input: {predictor.input_size} -----")
-    
-    # Salva a acurácia em arquivo
-    with open(f"{input_file}-accuracy.csv", 'a') as f:
-        f.write(f"{final_accuracy:.4f} WISARD\n")
+        print("\n----- Results ------")
+        print(f"Predicted branches: {num_correct}")
+        print(f"Not predicted branches: {num_branches - num_correct}")
+        print(f"Accuracy: {final_accuracy:.2f}%")
+        print(f"\n------ Size of ntuple (address_size): {parameters[0]} -----")
+        print(f"\n------ Size of each input: {predictor.input_size} -----")
+
+    except FileNotFoundError:  # Trata erro de arquivo não encontrado
+        print("Can't open file")  # Mostra mensagem de erro
+        sys.exit(1)  # Encerra programa com código de erro
+    except Exception as e:  # Trata outros erros possíveis
+        print(f"Error: {str(e)}")  # Mostra mensagem de erro detalhada
+        sys.exit(1)  # Encerra programa com código de erro
 
 # Ponto de entrada do programa
 if __name__ == "__main__":

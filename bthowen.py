@@ -8,11 +8,7 @@ from typing import List
 from datetime import datetime
 
 # Implementação do Filtro de Bloom para o BTHOWeN
-class BloomFilter:
-    """
-    Filtro de Bloom para BTHOWeN
-    Usa múltiplas funções de hash para indexação
-    """
+class BloomFilter:   
     def __init__(self, size: int, num_hashes: int):
         # Inicializa os parâmetros do filtro
         self.size = size
@@ -21,11 +17,7 @@ class BloomFilter:
         self.weights = np.zeros(size, dtype=np.int8)  # Pesos associados aos bits
 
     # Gera índices de hash usando MurmurHash3
-    def get_hash_indices(self, data: np.ndarray, seed: int) -> List[int]:
-        """
-        Gera múltiplos índices de hash usando MurmurHash3
-        Conforme especificado no artigo BTHOWeN, usa funções hash ternárias
-        """
+    def get_hash_indices(self, data: np.ndarray, seed: int) -> List[int]:       
         indices = []
         data_bytes = data.tobytes()
 
@@ -37,8 +29,7 @@ class BloomFilter:
         return indices
 
     # Obtém o peso para os dados de entrada fornecidos
-    def get_weight(self, data: np.ndarray, seed: int) -> int:
-        """Obtém o peso para os dados de entrada fornecidos"""
+    def get_weight(self, data: np.ndarray, seed: int) -> int:        
         total_weight = 0
         indices = self.get_hash_indices(data, seed)
 
@@ -50,7 +41,6 @@ class BloomFilter:
 
     # Atualiza os pesos usando aprendizado one-shot
     def update(self, data: np.ndarray, seed: int, error: int):
-        """Atualiza pesos usando aprendizado one-shot"""
         indices = self.get_hash_indices(data, seed)
 
         for idx in indices:
@@ -59,10 +49,7 @@ class BloomFilter:
             self.weights[idx] = np.clip(self.weights[idx] + error, -128, 127)
 
 # Implementação completa do BTHOWeN
-class BTHOWeN:
-    """
-    Implementação completa do BTHOWeN com todas as características do artigo original
-    """
+class BTHOWeN:  
     def __init__(self, input_params: List[int]):
         # Parâmetros do filtro de Bloom
         self.num_filters = 3
@@ -118,15 +105,7 @@ class BTHOWeN:
         )       
 
     # Extrai características conforme especificado no artigo
-    def extract_features(self, pc: int) -> np.ndarray:
-        """
-        Extrai características:
-        - Bits do PC
-        - GHR
-        - PC XOR GHR
-        - LHRs
-        - GA
-        """
+    def extract_features(self, pc: int) -> np.ndarray:        
         # Extrai bits do PC
         pc_bits = np.array([int(b) for b in format(pc & ((1 << 24) - 1), '024b')], dtype=np.uint8)
         pc_bits_repeated = np.tile(pc_bits, self.pc_times)
@@ -163,12 +142,26 @@ class BTHOWeN:
 
         return features
 
+    # Atualiza todos os registros de histórico
+    def _update_histories(self, pc: int, outcome: int):
+        # Atualiza GHR
+        self.ghr = np.roll(self.ghr, -1)
+        self.ghr[-1] = outcome
+
+        # Atualiza LHRs
+        pc_bits = np.array([int(b) for b in format(pc & ((1 << 24) - 1), '024b')], dtype=np.uint8)
+        for i, (length, bits_pc) in enumerate(self.lhr_configs):
+            index = int(''.join(map(str, pc_bits[-bits_pc:])), 2)
+            self.lhrs[i][index] = np.roll(self.lhrs[i][index], -1)
+            self.lhrs[i][index][-1] = outcome
+
+        # Atualiza GA
+        new_bits = pc_bits[-self.ga_lower:]
+        self.ga = np.roll(self.ga, -self.ga_lower)
+        self.ga[-self.ga_lower:] = new_bits
+
     # Faz predição e realiza treinamento one-shot se necessário
-    def predict_and_train(self, pc: int, outcome: int) -> bool:
-        """
-        Faz predição e realiza treinamento one-shot se necessário
-        Retorna True se a predição estiver correta
-        """
+    def predict_and_train(self, pc: int, outcome: int) -> bool:       
         features = self.extract_features(pc)
 
         # Obtém votos de todos os filtros de Bloom
@@ -189,26 +182,7 @@ class BTHOWeN:
         # Atualiza históricos
         self._update_histories(pc, outcome)
 
-        return correct
-
-    # Atualiza todos os registros de histórico
-    def _update_histories(self, pc: int, outcome: int):
-        """Atualiza GHR, LHRs e GA"""
-        # Atualiza GHR
-        self.ghr = np.roll(self.ghr, -1)
-        self.ghr[-1] = outcome
-
-        # Atualiza LHRs
-        pc_bits = np.array([int(b) for b in format(pc & ((1 << 24) - 1), '024b')], dtype=np.uint8)
-        for i, (length, bits_pc) in enumerate(self.lhr_configs):
-            index = int(''.join(map(str, pc_bits[-bits_pc:])), 2)
-            self.lhrs[i][index] = np.roll(self.lhrs[i][index], -1)
-            self.lhrs[i][index][-1] = outcome
-
-        # Atualiza GA
-        new_bits = pc_bits[-self.ga_lower:]
-        self.ga = np.roll(self.ga, -self.ga_lower)
-        self.ga[-self.ga_lower:] = new_bits
+        return correct    
 
 # Função principal do programa
 def main():

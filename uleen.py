@@ -46,11 +46,9 @@ class SubModel:
         return total
 
 class ULEEN:   
+    # Inicializa o preditor com parâmetros específicos
     def __init__(self, input_params: List[int]):
-        # Fixed parameter order and validation
-        if len(input_params) != 10:
-            raise ValueError("Expected 10 input parameters")
-            
+        # Define os parâmetros de entrada
         self.ntuple_size = input_params[0]  # tamanho da n-tupla
         self.pc_times = input_params[1]     # número de vezes do PC
         self.ghr_times = input_params[2]    # número de vezes do GHR

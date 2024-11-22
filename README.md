@@ -34,11 +34,3 @@ Exemplo:
 ```
 $ python uleen.py Dataset_pc_decimal/S2.txt 32 2 2 2 2 2 3 4 1 1
 ```
-
-### DWN
-
-Exemplo:
-
-```
-$ python dwn.py Dataset_pc_decimal/I2.txt 32 2 2 2 2 2 3 4 1 1
-```

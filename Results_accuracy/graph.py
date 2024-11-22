@@ -4,56 +4,72 @@ import sys
 
 def plot_csv_data(file1, file2, file3, x_column, y_column, labels, output_file=None):
     """
-    Plots data from three CSV files.
+    Plota dados de três arquivos CSV.
 
-    :param file1: Path to the first CSV file
-    :param file2: Path to the second CSV file
-    :param file3: Path to the third CSV file
-    :param x_column: Name of the column to use for the X-axis
-    :param y_column: Name of the column to use for the Y-axis
-    :param labels: List of labels for the three datasets
-    :param output_file: Path to save the plot as an image (optional)
+    :param file1: Caminho para o primeiro arquivo CSV
+    :param file2: Caminho para o segundo arquivo CSV
+    :param file3: Caminho para o terceiro arquivo CSV
+    :param x_column: Nome da coluna para o eixo X
+    :param y_column: Nome da coluna para o eixo Y
+    :param labels: Lista de rótulos para os três conjuntos de dados
+    :param output_file: Caminho para salvar o gráfico como imagem (opcional)
     """
-    # Load the data
+    # Carregar os dados
     data1 = pd.read_csv(file1)
     data2 = pd.read_csv(file2)
     data3 = pd.read_csv(file3)
 
-    # Plot the data
+    # Plotar os dados
     plt.figure(figsize=(10, 6))
-    plt.plot(data1[x_column], data1[y_column], label=labels[0], marker='o')
-    plt.plot(data2[x_column], data2[y_column], label=labels[1], marker='s')
-    plt.plot(data3[x_column], data3[y_column], label=labels[2], marker='^')
+    line1, = plt.plot(data1[x_column], data1[y_column], label=labels[0], marker='o')
+    line2, = plt.plot(data2[x_column], data2[y_column], label=labels[1], marker='s')
+    line3, = plt.plot(data3[x_column], data3[y_column], label=labels[2], marker='^')
 
-    # Customize the plot
-    plt.title('Comparison of Accuracy vs Number of Branches Processed')
+    # Adicionar anotações com porcentagens e casas decimais no final de cada linha
+    # Conjunto de dados 1
+    x1 = data1[x_column].iloc[-1]
+    y1 = data1[y_column].iloc[-1]
+    plt.text(x1, y1, f"{y1:.2f}%", fontsize=9, ha='left', va='bottom', color=line1.get_color())
+
+    # Conjunto de dados 2
+    x2 = data2[x_column].iloc[-1]
+    y2 = data2[y_column].iloc[-1]
+    plt.text(x2, y2, f"{y2:.2f}%", fontsize=9, ha='left', va='bottom', color=line2.get_color())
+
+    # Conjunto de dados 3
+    x3 = data3[x_column].iloc[-1]
+    y3 = data3[y_column].iloc[-1]
+    plt.text(x3, y3, f"{y3:.2f}%", fontsize=9, ha='left', va='bottom', color=line3.get_color())
+
+    # Personalizar o gráfico
+    plt.title('Comparação de Acurácia vs Número de Ramos Processados')
     plt.xlabel(x_column)
     plt.ylabel(y_column)
     plt.legend()
     plt.grid(True)
 
-    # Show or save the plot
+    # Mostrar ou salvar o gráfico
     if output_file:
         plt.savefig(output_file)
-        print(f"Plot saved to {output_file}")
+        print(f"Gráfico salvo em {output_file}")
     else:
         plt.show()
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print("Usage: python graph.py <wisard.csv> <bthowen.csv> <uleen.csv> [output_file]")
+        print("Uso: python graph.py <wisard.csv> <bthowen.csv> <uleen.csv> [output_file]")
         sys.exit(1)
 
-    # Parse command-line arguments
+    # Analisar argumentos de linha de comando
     file1 = sys.argv[1]
     file2 = sys.argv[2]
     file3 = sys.argv[3]
     output_file = sys.argv[4] if len(sys.argv) > 4 else None
 
-    # Column names and labels
+    # Nomes das colunas e rótulos
     x_column = "Number of Branches Processed"
     y_column = "Accuracy (%)"
     labels = ["WiSARD", "BTHOWeN", "ULEEN"]
 
-    # Generate the plot
+    # Gerar o gráfico
     plot_csv_data(file1, file2, file3, x_column, y_column, labels, output_file)
